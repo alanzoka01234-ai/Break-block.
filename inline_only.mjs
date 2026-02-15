@@ -499,10 +499,7 @@ class Chunk {
         const dummy = new THREE.Object3D();
         const color = new THREE.Color();
 
-        // Fix: Use for...in loop instead of Object.entries to ensure 'list' retains its 'any[]' type 
-        // from the JSDoc on 'buckets', avoiding 'unknown' type inference in some environments.
-        for(let tid in buckets) {
-            const list = buckets[tid];
+        for(let [tid, list] of Object.entries(buckets)) {
             const def = Object.values(BLOCKS).find(d => d.id === Number(tid));
             const mat = new THREE.MeshStandardMaterial({
                 color: def.color,
