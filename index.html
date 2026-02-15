@@ -20,6 +20,7 @@
             user-select: none;
             -webkit-user-select: none;
             color: var(--text-light);
+            -webkit-tap-highlight-color: transparent;
         }
 
         #game-canvas { display: block; width: 100vw; height: 100vh; }
@@ -376,11 +377,6 @@ const noise = (x, z) => {
 // =========================================
 // PROCEDURAL TEXTURES (tiny, fast, no external assets)
 // =========================================
-function _hexToRgb(hex) {
-    const c = new THREE.Color(hex);
-    return { r: Math.round(c.r*255), g: Math.round(c.g*255), b: Math.round(c.b*255) };
-}
-
 function makeCanvasTexture({ size = 64, draw, repeat = 2, colorSpace = THREE.SRGBColorSpace } = {}) {
     const c = document.createElement('canvas');
     c.width = c.height = size;
@@ -1108,6 +1104,7 @@ class Chunk {
         this.cx = cx; this.cz = cz; this.scene = scene;
         this.blocks = new Map();
         this.meshes = {};
+        this.tempColor = new THREE.Color();
         this.generate();
         this.build();
     }
@@ -1191,14 +1188,16 @@ class Chunk {
         const mesh = this.meshes[b.type];
         const pct = b.hp / b.max;
         
-        const flash = new THREE.Color(0xffffff);
-        mesh.setColorAt(b.instanceId, flash);
+        // Use pre-allocated tempColor instead of creating new THREE.Color()
+        this.tempColor.setHex(0xffffff);
+        mesh.setColorAt(b.instanceId, this.tempColor);
         mesh.instanceColor.needsUpdate = true;
         
         setTimeout(() => {
             if(this.blocks.has(key)) {
+                // clone is still safe here as it runs infrequently (only on hit)
                 const dmgColor = b.baseColor.clone().multiplyScalar(0.4 + 0.6 * pct);
-                if(pct < 0.3) dmgColor.add(new THREE.Color(0x550000)); 
+                if(pct < 0.3) dmgColor.add(this.tempColor.setHex(0x550000)); 
                 mesh.setColorAt(b.instanceId, dmgColor);
                 mesh.instanceColor.needsUpdate = true;
             }
@@ -1212,28 +1211,33 @@ class Chunk {
             this.blocks.delete(key);
             game.audio.break(b.type);
             
+            // Immediately clear target if we destroyed the block we were aiming at
+            if (game.pickTarget && game.pickTarget.x === wx && game.pickTarget.z === wz) {
+                game.pickTarget = null;
+            }
+
             const def = Object.values(BLOCKS).find(d => d.id == b.type);
             game.particles.spawnBreakParticles(new THREE.Vector3(wx, 0.5, wz), def);
             game.hitStop = 0.05;
             
-// Always reward drops (no RNG). Amount depends on block type + upgrades.
-const dropPos = new THREE.Vector3(wx, 0.5, wz);
-const yMat = (game.player && game.player.stats && game.player.stats.yMat) ? game.player.stats.yMat : 0;
-const yCry = (game.player && game.player.stats && game.player.stats.yCry) ? game.player.stats.yCry : 0;
+            // Always reward drops
+            const dropPos = new THREE.Vector3(wx, 0.5, wz);
+            const yMat = (game.player && game.player.stats && game.player.stats.yMat) ? game.player.stats.yMat : 0;
+            const yCry = (game.player && game.player.stats && game.player.stats.yCry) ? game.player.stats.yCry : 0;
 
-const rewards = [];
-if (b.type === 1) rewards.push({ kind: 'mat', amount: 1 + yMat });           // Dirt
-else if (b.type === 2) rewards.push({ kind: 'mat', amount: 2 + yMat });      // Stone
-else if (b.type === 3) rewards.push({ kind: 'crystal', amount: 2 + yCry });  // Crystal
-else if (b.type === 4) {                                                     // Magma (rare jackpot)
-    rewards.push({ kind: 'crystal', amount: 4 + yCry });
-    rewards.push({ kind: 'mat', amount: 2 + yMat });
-}
+            const rewards = [];
+            if (b.type === 1) rewards.push({ kind: 'mat', amount: 1 + yMat });           // Dirt
+            else if (b.type === 2) rewards.push({ kind: 'mat', amount: 2 + yMat });      // Stone
+            else if (b.type === 3) rewards.push({ kind: 'crystal', amount: 2 + yCry });  // Crystal
+            else if (b.type === 4) {                                                     // Magma (rare jackpot)
+                rewards.push({ kind: 'crystal', amount: 4 + yCry });
+                rewards.push({ kind: 'mat', amount: 2 + yMat });
+            }
 
-for (const r of rewards) {
-    const spawned = game.particles.spawnDrop(dropPos, r.kind, r.amount);
-    if(!spawned) game.collect(r.kind, dropPos, r.amount);
-}
+            for (const r of rewards) {
+                const spawned = game.particles.spawnDrop(dropPos, r.kind, r.amount);
+                if(!spawned) game.collect(r.kind, dropPos, r.amount);
+            }
             if(b.type === 4) this.explode(wx, wz);
         }
         return b;
@@ -1253,6 +1257,10 @@ for (const r of rewards) {
         Object.values(this.meshes).forEach(m => { 
             if (game && typeof game.removeInteractable === 'function') game.removeInteractable(m);
             this.scene.remove(m); 
+            // Geometries are shared globally, do not dispose here or other chunks break
+            // m.geometry.dispose(); 
+            // Materials are shared globally, do not dispose here
+            // m.material.dispose();
         }); 
     }
 }
@@ -1698,7 +1706,12 @@ class Game {
         // Touch Events
         zone.addEventListener('touchstart', e => { e.preventDefault(); handleInput(e.changedTouches[0].clientX, e.changedTouches[0].clientY, 'start'); });
         zone.addEventListener('touchmove', e => { e.preventDefault(); handleInput(e.changedTouches[0].clientX, e.changedTouches[0].clientY, 'move'); });
-        zone.addEventListener('touchend', e => { e.preventDefault(); handleInput(0, 0, 'end'); });
+        
+        // Use global listeners for end events to avoid sticking if finger slides off
+        document.addEventListener('touchend', e => { handleInput(0, 0, 'end'); });
+        document.addEventListener('mouseup', e => { 
+            if (this.input.move.lengthSq() > 0) handleInput(0, 0, 'end');
+        });
 
         // Mouse Events (Desktop)
         let isDragging = false;
@@ -1793,7 +1806,9 @@ class Game {
         try {
             const saved = JSON.parse(localStorage.getItem('vx_stats_hd'));
             if(saved) this.player.stats = { ...this.player.stats, ...saved };
-        } catch(e) {}
+        } catch(e) {
+            console.warn("Failed to load stats", e);
+        }
         // Keep mining range in sync
         if(this.player.stats.mineRange) this.maxMineRange = this.player.stats.mineRange;
         this.player.setSkin(this.settings.skin, this.settings.glow);
@@ -2046,12 +2061,18 @@ class Game {
         document.getElementById('shop-balance-mats').innerText = this.res.mat;
     }
 
-    save() { localStorage.setItem('vx_data_hd', JSON.stringify({res:this.res, set:this.settings})); if(this.player) localStorage.setItem('vx_stats_hd', JSON.stringify(this.player.stats)); }
+    save() { 
+        try {
+            localStorage.setItem('vx_data_hd', JSON.stringify({res:this.res, set:this.settings})); 
+            if(this.player) localStorage.setItem('vx_stats_hd', JSON.stringify(this.player.stats));
+        } catch(e) { console.warn("Save failed", e); }
+    }
+
     load() {
-        const d = JSON.parse(localStorage.getItem('vx_data_hd'));
-        if(d) { this.res = d.res; this.settings = {...this.settings, ...d.set}; }
-        const s = JSON.parse(localStorage.getItem('vx_stats_hd'));
-        if(s && this.player) this.player.stats = s;
+        try {
+            const d = JSON.parse(localStorage.getItem('vx_data_hd'));
+            if(d) { this.res = d.res; this.settings = {...this.settings, ...d.set}; }
+        } catch(e) { console.warn("Load failed", e); }
     }
 
     monitorFPS(dt) {

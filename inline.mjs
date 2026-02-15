@@ -20,8 +20,8 @@ const COLORS = {
 };
 
 const BLOCKS = {
-    DIRT: { id: 1, hp: 30, color: COLORS.DIRT, name: "Dirt", rough: 0.9, metal: 0.1 },
-    STONE: { id: 2, hp: 80, color: COLORS.STONE, name: "Stone", rough: 0.7, metal: 0.2 },
+    DIRT: { id: 1, hp: 30, color: COLORS.DIRT, name: "Dirt", rough: 0.9, metal: 0.1, emit: 0 },
+    STONE: { id: 2, hp: 80, color: COLORS.STONE, name: "Stone", rough: 0.7, metal: 0.2, emit: 0 },
     CRYSTAL: { id: 3, hp: 150, color: COLORS.CRYSTAL, name: "Crystal", rough: 0.1, metal: 0.8, emit: 0.8 },
     MAGMA: { id: 4, hp: 40, color: COLORS.MAGMA, name: "Magma", rough: 0.4, metal: 0.4, emit: 1.0 },
 };
@@ -39,8 +39,11 @@ const noise = (x, z) => {
 // =========================================
 
 class AudioSys {
+    ctx;
+    enabled;
     constructor() {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioCtor = window.AudioContext || window['webkitAudioContext'];
+        this.ctx = new AudioCtor();
         this.enabled = true;
     }
     resume() { if(this.ctx.state === 'suspended') this.ctx.resume(); }
@@ -63,6 +66,21 @@ class AudioSys {
 }
 
 class ParticleSys {
+    scene;
+    camera;
+    drops;
+    texts;
+    shockwaves;
+    trails;
+    ambient;
+    MAX_PARTICLES;
+    pools;
+    dummy;
+    tempColor;
+    tempVec;
+    dropMatCrystal;
+    dropMatMat;
+
     constructor(scene, camera) {
         this.scene = scene;
         this.camera = camera;
@@ -447,6 +465,7 @@ for(let d of this.drops) {
 }
 
 class Chunk {
+    cx; cz; scene; blocks; meshes;
     constructor(cx, cz, scene) {
         this.cx = cx; this.cz = cz; this.scene = scene;
         this.blocks = new Map();
@@ -589,6 +608,7 @@ if(!spawned) game.collect(dropKind, dropPos);
 
 
 class World {
+    scene; chunks;
     constructor(scene) {
         this.scene = scene; this.chunks = new Map();
         const plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({color: 0x080808, roughness: 0.9}));
@@ -617,6 +637,10 @@ class World {
 }
 
 class Player {
+    scene; mesh; model; matBody; matDark; matAccent;
+    body; head; visor; pack; armL; armR; shadow;
+    pos; rot; stats; time; recoil; trailTimer; cdTimer; skins; currentSkin;
+
     constructor(scene) {
         this.scene = scene;
         this.mesh = new THREE.Group();
@@ -784,6 +808,11 @@ class Player {
 }
 
 class Game {
+    res; settings; hitStop; interactables; raycaster; pointerNDC; pointerActive; pickTarget; maxMineRange; fpsHistory; running; started;
+    scene; cameraObj; camOffset; camShake; renderer; sun; playerLight; targetBox;
+    input; jOrigin;
+    audio; world; player; particles; ui; composer; clock;
+
     constructor() {
         this.res = { cry: 0, mat: 0 };
         const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -1023,11 +1052,11 @@ class Game {
             updateTarget: (b, x, z) => {
                 if(b) {
                     this.targetBox.visible = true; this.targetBox.position.set(x, 0, z);
-                    this.ui.tInfo.style.opacity = 1;
+                    this.ui.tInfo.style.opacity = '1';
                     const def = Object.values(BLOCKS).find(d => d.id == b.type);
                     this.ui.tName.innerText = def.name;
                     this.ui.tHp.style.width = (b.hp/b.max)*100 + "%";
-                } else { this.targetBox.visible = false; this.ui.tInfo.style.opacity = 0; }
+                } else { this.targetBox.visible = false; this.ui.tInfo.style.opacity = '0'; }
             },
             notify: (msg) => {
                 const el = document.createElement('div'); el.className = 'toast'; el.innerText = msg;
@@ -1079,13 +1108,13 @@ class Game {
             }
         }
         
-        document.getElementById('opt-quality').value = this.settings.quality;
-        document.getElementById('opt-vfx').value = this.settings.vfx;
-        document.getElementById('opt-bloom').checked = this.settings.bloom;
-        document.getElementById('opt-shadows').checked = this.settings.shadows;
-        document.getElementById('opt-sound').checked = this.settings.sound;
-        document.getElementById('opt-skin').value = this.settings.skin;
-        document.getElementById('opt-glow').checked = this.settings.glow;
+        document.getElementById('opt-quality')['value'] = this.settings.quality;
+        document.getElementById('opt-vfx')['value'] = this.settings.vfx;
+        document.getElementById('opt-bloom')['checked'] = this.settings.bloom;
+        document.getElementById('opt-shadows')['checked'] = this.settings.shadows;
+        document.getElementById('opt-sound')['checked'] = this.settings.sound;
+        document.getElementById('opt-skin')['value'] = this.settings.skin;
+        document.getElementById('opt-glow')['checked'] = this.settings.glow;
 
         document.getElementById('opt-quality').onchange = (e) => this.loadPreset(e.target.value);
         document.getElementById('opt-vfx').onchange = (e) => this.settings.vfx = e.target.value;
@@ -1142,9 +1171,9 @@ class Game {
             const avg = this.fpsHistory.reduce((a,b)=>a+b)/60;
             if(avg < 30 && this.settings.vfx !== 'LOW') {
                 this.settings.vfx = 'LOW';
-                document.getElementById('opt-vfx').value = 'LOW';
+                document.getElementById('opt-vfx')['value'] = 'LOW';
                 const el = document.getElementById('low-fps-warning');
-                el.style.opacity = 1; setTimeout(()=>el.style.opacity=0, 3000);
+                el.style.opacity = '1'; setTimeout(()=>el.style.opacity='0', 3000);
                 this.fpsHistory = [];
             }
         }
@@ -1182,5 +1211,3 @@ class Game {
 const game = new Game();
 window.game = game;
 game.clock = new THREE.Clock();
-</script>
-<script type="module" src="/index.tsx"></script>
