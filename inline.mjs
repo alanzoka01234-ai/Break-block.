@@ -492,6 +492,7 @@ class Chunk {
     }
 
     build() {
+        /** @type {Object.<string, any[]>} */
         const buckets = {};
         this.blocks.forEach(b => { if(!buckets[b.type]) buckets[b.type] = []; buckets[b.type].push(b); });
         const geo = new THREE.BoxGeometry(0.95, 0.95, 0.95);
@@ -499,7 +500,7 @@ class Chunk {
         const color = new THREE.Color();
 
         for(let [tid, list] of Object.entries(buckets)) {
-            const def = Object.values(BLOCKS).find(d => d.id == tid);
+            const def = Object.values(BLOCKS).find(d => d.id === Number(tid));
             const mat = new THREE.MeshStandardMaterial({
                 color: def.color,
                 roughness: def.rough,
@@ -523,7 +524,7 @@ class Chunk {
                 mesh.setMatrixAt(i, dummy.matrix);
                 
                 color.setHex(def.color);
-                if(tid != 3 && tid != 4) {
+                if(Number(tid) !== 3 && Number(tid) !== 4) {
                     const r = (Math.random()-0.5)*0.1;
                     color.r+=r; color.g+=r; color.b+=r;
                 }
@@ -600,8 +601,8 @@ if(!spawned) game.collect(dropKind, dropPos);
         Object.values(this.meshes).forEach(m => { 
             if (game && typeof game.removeInteractable === 'function') game.removeInteractable(m);
             this.scene.remove(m); 
-            m.geometry.dispose(); 
-            m.material.dispose(); 
+            m['geometry'].dispose(); 
+            m['material'].dispose(); 
         }); 
     }
 }
@@ -1116,13 +1117,13 @@ class Game {
         document.getElementById('opt-skin')['value'] = this.settings.skin;
         document.getElementById('opt-glow')['checked'] = this.settings.glow;
 
-        document.getElementById('opt-quality').onchange = (e) => this.loadPreset(e.target.value);
-        document.getElementById('opt-vfx').onchange = (e) => this.settings.vfx = e.target.value;
-        document.getElementById('opt-bloom').onchange = (e) => { this.settings.bloom = e.target.checked; this.updateGraphics(); };
-        document.getElementById('opt-shadows').onchange = (e) => { this.settings.shadows = e.target.checked; this.updateGraphics(); };
-        document.getElementById('opt-sound').onchange = (e) => { this.settings.sound = e.target.checked; this.audio.enabled = e.target.checked; };
-        document.getElementById('opt-skin').onchange = (e) => { this.settings.skin = e.target.value; if(this.player) this.player.setSkin(e.target.value, this.settings.glow); };
-        document.getElementById('opt-glow').onchange = (e) => { this.settings.glow = e.target.checked; if(this.player) this.player.setSkin(this.settings.skin, e.target.checked); };
+        document.getElementById('opt-quality').onchange = (e) => this.loadPreset(e.target['value']);
+        document.getElementById('opt-vfx').onchange = (e) => this.settings.vfx = e.target['value'];
+        document.getElementById('opt-bloom').onchange = (e) => { this.settings.bloom = e.target['checked']; this.updateGraphics(); };
+        document.getElementById('opt-shadows').onchange = (e) => { this.settings.shadows = e.target['checked']; this.updateGraphics(); };
+        document.getElementById('opt-sound').onchange = (e) => { this.settings.sound = e.target['checked']; this.audio.enabled = e.target['checked']; };
+        document.getElementById('opt-skin').onchange = (e) => { this.settings.skin = e.target['value']; if(this.player) this.player.setSkin(e.target['value'], this.settings.glow); };
+        document.getElementById('opt-glow').onchange = (e) => { this.settings.glow = e.target['checked']; if(this.player) this.player.setSkin(this.settings.skin, e.target['checked']); };
         this.save();
     }
 
@@ -1209,5 +1210,5 @@ class Game {
 }
 
 const game = new Game();
-window.game = game;
+window['game'] = game;
 game.clock = new THREE.Clock();

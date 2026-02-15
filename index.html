@@ -170,13 +170,16 @@
         #fx-vignette {
             background: radial-gradient(ellipse at center,
                 rgba(0,0,0,0) 40%,
-                rgba(0,0,0,0.35) 75%,
-                rgba(0,0,0,0.7) 100%);
+                rgba(0,0,0,0.2) 75%,
+                rgba(0,0,0,0.5) 100%);
             mix-blend-mode: multiply;
-            opacity: 0.85;
+            opacity: 0.2; /* Reduced for Day mode */
+            transition: opacity 0.5s;
         }
+        body.night-mode #fx-vignette { opacity: 0.85; }
+        
         #fx-grain {
-            opacity: 0.10;
+            opacity: 0.08;
             mix-blend-mode: overlay;
             background-image:
                 repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 1px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 3px),
@@ -188,7 +191,7 @@
             100% { transform: translate3d(-30px, 20px, 0); }
         }
         body.gfx-low #fx-grain { display: none; }
-        body.gfx-low #fx-vignette { opacity: 0.55; }
+        body.gfx-low #fx-vignette { display: none; }
 
         /* First-person crosshair */
         #crosshair {
@@ -296,6 +299,13 @@
                     <option value="LOW">Low (Fast)</option>
                     <option value="MED">Medium</option>
                     <option value="HIGH">High (Ultra)</option>
+                </select>
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Time of Day</span>
+                <select id="opt-time">
+                    <option value="DAY">Day (Bright)</option>
+                    <option value="NIGHT">Night (Dark)</option>
                 </select>
             </div>
             <div class="setting-row">
@@ -1474,7 +1484,8 @@ class Game {
             sound: true,
             skin: 'BLUE',
             glow: true,
-            cam: 'TOP' // TOP or FP
+            cam: 'TOP',
+            time: 'DAY' // Default to DAY
         };
         this.camMode = 'TOP';
         this.hitStop = 0;
@@ -1502,8 +1513,9 @@ class Game {
         this.initThree(); this.initInput(); this.load();
         this.loadPreset(this.settings.quality);
 
-        // Apply camera mode (TOP by default)
+        // Apply settings that might have been loaded
         this.setCameraMode(this.settings.cam || 'TOP', true);
+        this.setTimeOfDay(this.settings.time || 'DAY');
     }
 
     setCameraMode(mode, silent = false) {
@@ -1536,6 +1548,41 @@ class Game {
 
     toggleCameraMode() {
         this.setCameraMode(this.camMode === 'FP' ? 'TOP' : 'FP');
+    }
+
+    setTimeOfDay(time) {
+        this.settings.time = time;
+        const isDay = (time === 'DAY');
+        
+        document.body.classList.toggle('night-mode', !isDay);
+
+        if (isDay) {
+            // Bright Day Settings
+            this.scene.background = new THREE.Color(0x88ccee);
+            this.scene.fog = new THREE.FogExp2(0x88ccee, 0.015);
+            
+            // Bright Sun
+            this.sun.color.setHex(0xffffff); 
+            this.sun.intensity = 2.0;
+            
+            // Strong Ambient/Hemi
+            this.hemiLight.color.setHex(0xffffff);
+            this.hemiLight.groundColor.setHex(0x666666);
+            this.hemiLight.intensity = 1.0;
+        } else {
+            // Dark Night Settings (Original)
+            this.scene.background = new THREE.Color(0x050508);
+            this.scene.fog = new THREE.FogExp2(0x050508, 0.05);
+            
+            this.sun.color.setHex(0xffdfba);
+            this.sun.intensity = 1.2;
+            
+            this.hemiLight.color.setHex(0xaaccff);
+            this.hemiLight.groundColor.setHex(0x444444);
+            this.hemiLight.intensity = 0.4;
+        }
+        
+        this.save();
     }
 
     loadPreset(mode) {
@@ -1626,6 +1673,7 @@ class Game {
 
     initThree() {
         this.scene = new THREE.Scene();
+        // Initial setup will be overridden by setTimeOfDay
         this.scene.background = new THREE.Color(0x050508);
         this.scene.fog = new THREE.FogExp2(0x050508, 0.05);
 
@@ -1644,8 +1692,8 @@ class Game {
         // Procedural textures/materials
         this.assets = createGameAssets(this.renderer);
 
-        const hemi = new THREE.HemisphereLight(0xaaccff, 0x444444, 0.4);
-        this.scene.add(hemi);
+        this.hemiLight = new THREE.HemisphereLight(0xaaccff, 0x444444, 0.4);
+        this.scene.add(this.hemiLight);
         
         this.sun = new THREE.DirectionalLight(0xffdfba, 1.2);
         this.sun.position.set(15, 25, 10);
@@ -1908,6 +1956,7 @@ class Game {
         }
         
         document.getElementById('opt-quality').value = this.settings.quality;
+        document.getElementById('opt-time').value = this.settings.time;
         document.getElementById('opt-vfx').value = this.settings.vfx;
         document.getElementById('opt-bloom').checked = this.settings.bloom;
         document.getElementById('opt-shadows').checked = this.settings.shadows;
@@ -1916,6 +1965,7 @@ class Game {
         document.getElementById('opt-glow').checked = this.settings.glow;
 
         document.getElementById('opt-quality').onchange = (e) => this.loadPreset(e.target.value);
+        document.getElementById('opt-time').onchange = (e) => this.setTimeOfDay(e.target.value);
         document.getElementById('opt-vfx').onchange = (e) => this.settings.vfx = e.target.value;
         document.getElementById('opt-bloom').onchange = (e) => { this.settings.bloom = e.target.checked; this.updateGraphics(); };
         document.getElementById('opt-shadows').onchange = (e) => { this.settings.shadows = e.target.checked; this.updateGraphics(); };
